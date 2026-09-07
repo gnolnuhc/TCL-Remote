@@ -56,12 +56,12 @@ pip install androidtvremote2 flask flask-cors zeroconf
 
 ### Quick Start (MacBook)
 
-1. Clone / download `tcl_one_mac_fixed.py` to `~/Downloads`
+1. Clone / download `tcl_remote.py` to `~/Downloads`
 
 2. Run:
 ```bash
 cd ~/Downloads
-python3 tcl_one_mac_fixed.py
+python3 tcl_remote.py
 ```
 
 3. First run:
@@ -86,7 +86,7 @@ Laptops sleep and break WOL. Best:
 sudo apt install python3-pip
 pip3 install androidtvremote2 flask flask-cors zeroconf
 # Copy script + certs
-python3 tcl_one_mac_fixed.py
+python3 tcl_remote.py
 # Make service
 sudo nano /etc/systemd/system/tcl-remote.service
 ```
@@ -98,7 +98,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=/home/pi/tcl-remote
-ExecStart=/usr/bin/python3 /home/pi/tcl-remote/tcl_one_mac_fixed.py
+ExecStart=/usr/bin/python3 /home/pi/tcl-remote/tcl_remote.py
 Restart=always
 
 [Install]
@@ -110,13 +110,13 @@ sudo systemctl enable --now tcl-remote
 
 **Mac stay-awake workaround:**
 ```bash
-caffeinate -dimsu python3 tcl_one_mac_fixed.py
+caffeinate -dimsu python3 tcl_remote.py
 ```
 Or create `~/Desktop/TCL Remote.command`:
 ```bash
 #!/bin/bash
 cd ~/Downloads
-caffeinate -dimsu python3 tcl_one_mac_fixed.py
+caffeinate -dimsu python3 tcl_remote.py
 ```
 `chmod +x ~/Desktop/TCL\ Remote.command` → double-click to start.
 
@@ -157,7 +157,7 @@ Change `PORT = 8000` at top of script.
 ### File Layout
 
 ```
-tcl_one_mac_fixed.py  # single-file Flask + PWA + pairing + discovery + WOL + keepalive
+tcl_remote.py  # single-file Flask + PWA + pairing + discovery + WOL + keepalive
 cert.pem / key.pem    # generated once, keep safe, whitelisted by TV
 tcl_last_ip.txt       # auto-saved last IP
 ```
@@ -177,7 +177,7 @@ tcl_last_ip.txt       # auto-saved last IP
 
 ### Contributing
 
-PRs welcome! Please test on real TCL Google TV (not Roku). Run `python -m py_compile tcl_one_mac_fixed.py` before PR.
+PRs welcome! Please test on real TCL Google TV (not Roku). Run `python -m py_compile tcl_remote.py` before PR.
 
 ### License
 
