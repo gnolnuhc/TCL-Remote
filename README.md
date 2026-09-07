@@ -75,12 +75,12 @@ pip install androidtvremote2 flask flask-cors zeroconf
 
 ### Quick Start (MacBook)
 
-1. Clone / download `google_tv_remote.py` (or `tcl_one_mac_fixed.py`) to `~/Downloads`
+1. Clone / download `google-tv-remote.py` to `~/Downloads`
 
 2. Run:
 ```bash
 cd ~/Downloads
-python3 google_tv_remote.py
+python3 google-tv-remote.py
 ```
 
 3. First run:
@@ -107,7 +107,7 @@ Laptops sleep and break WOL/keepalive. Best: always-on device.
 sudo apt install python3-pip
 pip3 install androidtvremote2 flask flask-cors zeroconf
 # Copy script + certs
-python3 google_tv_remote.py
+python3 google-tv-remote.py
 # Make service
 sudo nano /etc/systemd/system/googletv-remote.service
 ```
@@ -119,7 +119,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=/home/pi/googletv-remote
-ExecStart=/usr/bin/python3 /home/pi/googletv-remote/google_tv_remote.py
+ExecStart=/usr/bin/python3 /home/pi/googletv-remote/google-tv-remote.py
 Restart=always
 
 [Install]
@@ -131,13 +131,13 @@ sudo systemctl enable --now googletv-remote
 
 **Mac stay-awake workaround:**
 ```bash
-caffeinate -dimsu python3 google_tv_remote.py
+caffeinate -dimsu python3 google-tv-remote.py
 ```
 Or create `~/Desktop/Google TV Remote.command`:
 ```bash
 #!/bin/bash
 cd ~/Downloads
-caffeinate -dimsu python3 google_tv_remote.py
+caffeinate -dimsu python3 google-tv-remote.py
 ```
 `chmod +x ~/Desktop/Google\ TV\ Remote.command` → double-click to start.
 
@@ -181,7 +181,7 @@ Ensure TV advertises `_androidtvremote2`. Some older Android TVs use v1 — try 
 ### File Layout
 
 ```
-google_tv_remote.py        # single-file Flask + PWA + pairing + discovery + WOL + keepalive
+google-tv-remote.py        # single-file Flask + PWA + pairing + discovery + WOL + keepalive
 cert.pem / key.pem         # generated once, keep safe, whitelisted by TV (per TV)
 google_tv_last_ip.txt      # auto-saved last IP (or tcl_last_ip.txt for legacy)
 ```
@@ -210,7 +210,7 @@ __pycache__/
 
 ### Contributing
 
-PRs welcome! Please test on real Google TV / Android TV (not Roku/Fire TV). Include brand/model in PR description. Run `python -m py_compile google_tv_remote.py` before PR.
+PRs welcome! Please test on real Google TV / Android TV (not Roku/Fire TV). Include brand/model in PR description. Run `python -m py_compile google-tv-remote.py` before PR.
 
 Originally built for TCL, now generic — thanks to testers on Sony, Hisense, and Chromecast.
 
