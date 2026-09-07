@@ -8,6 +8,9 @@ No more hunting for the physical remote. No TCL account. No ads.
 
 ---
 
+<img width="1284" height="2246" alt="IMG_4651" src="https://github.com/user-attachments/assets/6e9b50e4-9ae2-4761-8dcb-eb496e20cef6" />
+
+
 ### Why this?
 
 The official TCL / Google TV apps are bloated, require accounts, and break. This is:
