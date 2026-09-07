@@ -312,10 +312,10 @@ body { background: #0a0a0a; color: white; margin: 0; min-height: 100vh; display:
 <div class="reconnect-banner" id="reconnectBanner"><span class="spinner"></span><span id="reconnectText">Reconnecting...</span></div>
 <div class="remote">
 <div class="top-row">
-<button class="power" onclick="press('POWER', true)">⏻</button>
+<button class="power" data-key="POWER">⏻</button>
 <div class="pill-group">
-<button class="pill" onclick="press('HOME')">Home</button>
-<button class="pill" onclick="press('BACK')">Back</button>
+<button class="pill" data-key="HOME">Home</button>
+<button class="pill" data-key="BACK">Back</button>
 </div>
 </div>
 
@@ -331,16 +331,16 @@ body { background: #0a0a0a; color: white; margin: 0; min-height: 100vh; display:
 </div>
 
 <div class="volume-horizontal">
-<button class="vol-btn" onclick="press('VOLUME_DOWN')">−</button>
-<button class="vol-btn" onclick="press('MUTE')">MUTE</button>
-<button class="vol-btn" onclick="press('VOLUME_UP')">+</button>
+<button class="vol-btn" data-key="VOLUME_DOWN">−</button>
+<button class="vol-btn" data-key="MUTE">MUTE</button>
+<button class="vol-btn" data-key="VOLUME_UP">+</button>
 </div>
 
 <div class="action-row">
-<button class="action" onclick="press('TV_INPUT')">Input</button>
-<button class="action" onclick="press('SETTINGS')">Settings</button>
+<button class="action" data-key="TV_INPUT">Input</button>
+<button class="action" data-key="SETTINGS">Settings</button>
 </div>
-<button class="wide" onclick="press('MEDIA_PLAY_PAUSE')">▶︎  Play / Pause</button>
+<button class="wide" data-key="MEDIA_PLAY_PAUSE">▶︎  Play / Pause</button>
 <div class="hint"><div class="line"></div> iPhone • Glassmorphism • Haptics <div class="line"></div></div>
 </div>
 <p style="text-align:center;font-size:11px;opacity:.25;margin-top:16px">Add to Home Screen: Share → Add to Home Screen</p>
@@ -513,16 +513,35 @@ async function fetchStatus(){
 }
 
 function addPressVisuals(){
-  document.querySelectorAll('button').forEach(btn=>{
+  // SMOOTH: Immediate pointer events, no 300ms delay, no blocking
+  document.querySelectorAll('button[data-key]').forEach(btn=>{
     if(btn.closest('#trackpad')) return;
-    const onDown = ()=>{ unlockAudio(); btn.classList.add('pressed'); };
-    const onUp = ()=>{ setTimeout(()=>btn.classList.remove('pressed'), 120); };
-    btn.addEventListener('touchstart', onDown, {passive:true});
-    btn.addEventListener('touchend', onUp);
-    btn.addEventListener('touchcancel', onUp);
-    btn.addEventListener('mousedown', onDown);
-    btn.addEventListener('mouseup', onUp);
-    btn.addEventListener('mouseleave', onUp);
+    let downTime = 0;
+    const onDown = (e)=>{
+      if(e.cancelable) e.preventDefault();
+      unlockAudio();
+      btn.classList.add('pressed');
+      downTime = Date.now();
+      const k = btn.dataset.key;
+      if(k && !k.startsWith('DPAD_')){
+        playClick(k);
+        haptic();
+      }
+    };
+    const onUp = (e)=>{
+      if(e.cancelable) e.preventDefault();
+      btn.classList.remove('pressed');
+      if(Date.now() - downTime < 1000){
+        const k = btn.dataset.key;
+        if(k) press(k, 0, true);
+      }
+      setTimeout(()=>btn.classList.remove('pressed'), 100);
+    };
+    btn.addEventListener('pointerdown', onDown, {passive:false});
+    btn.addEventListener('pointerup', onUp, {passive:false});
+    btn.addEventListener('pointercancel', ()=>btn.classList.remove('pressed'), {passive:true});
+    btn.addEventListener('pointerleave', ()=>btn.classList.remove('pressed'), {passive:true});
+    btn.addEventListener('click', e=>e.preventDefault(), {passive:false});
   });
 }
 function initTrackpad(){
@@ -671,73 +690,45 @@ function initTrackpad(){
   });
 }
 document.addEventListener('DOMContentLoaded', ()=>{ setupAudioUnlock(); addPressVisuals(); initTrackpad(); fetchStatus(); unlockAudio(); });
-let isPressing = false;
-async function press(k, retryCount=0){
-  unlockAudio(); // ensure audio unlocked on any button press
-  if(isPressing && retryCount===0) { toast('Busy, please wait...'); return; }
-  isPressing = true;
-  // sound/haptic immediate
-  if(!k.startsWith('DPAD_')){ playClick(k); haptic(); }
-  // If we know we're offline, show WOL immediately for POWER
-  if(!connectionState.live && k==='POWER'){
-    toast('📡 Waking TV...', 2500);
-    updateStatusUI(false, true, 'Waking TV via WOL...');
-  } else if(!connectionState.live){
-    toast('TV offline, trying to reconnect...', 2000);
-    updateStatusUI(false, true, 'Reconnecting...');
-  } else if(connectionState.reconnecting){
-    toast('Reconnecting...', 2000);
-  }
+let pressQueue = [];
+let isProcessing = false;
+let lastFire = 0;
+async function press(k, retryCount=0, fromPointer=false){
+  unlockAudio();
+  const now = Date.now();
+  // Dedupe ghost click within 40ms
+  if(retryCount===0 && now - lastFire < 40) return;
+  if(retryCount===0) lastFire = now;
+  if(!fromPointer && !k.startsWith('DPAD_')){ playClick(k); haptic(); }
+  else if(fromPointer){ haptic(); }
+  pressQueue.push({k, retryCount, t: now});
+  if(!isProcessing) processQueue();
+}
 
+async function processQueue(){
+  if(pressQueue.length===0){ isProcessing = false; return; }
+  isProcessing = true;
+  const {k, retryCount} = pressQueue.shift();
   try{
-    let r=await fetch('/press?key='+k, {cache:'no-store'});
-    let j=await r.json();
-    
+    let r = await fetch('/press?key='+k, {cache:'no-store'});
+    let j = await r.json();
     if(j.status==='ok'){
       updateStatusUI(true, false, null);
-      toast(j.key + ' ✓');
-      // Refresh status after success
-      setTimeout(fetchStatus, 500);
-    } else if(j.status==='reconnecting'){
-      updateStatusUI(false, true, j.error || 'Reconnecting...');
-      toast('🔄 Reconnecting... (' + (j.attempt||1) + ')', 2500);
-      playClick('RECONNECT');
-      if(retryCount < 2){
-        // Auto-retry after 1.5s
-        setTimeout(()=>{ isPressing=false; press(k, retryCount+1); }, 1500);
-        return;
-      } else {
-        toast('Still reconnecting, try again', 3000);
-      }
-    } else if(j.status==='offline'){
-      updateStatusUI(false, j.reconnecting||false, j.error);
-      if(j.reconnecting){
-        toast('🔄 ' + (j.error||'Reconnecting...'), 3000);
-        if(retryCount < 2){
-          setTimeout(()=>{ isPressing=false; press(k, retryCount+1); }, 2000);
-          return;
-        }
-      } else {
-        if(k==='POWER'){
-          toast('📡 WOL sent, TV booting - try again in 10s', 4000);
-        } else {
-          toast('📺 TV offline - tap Power to wake', 3000);
-        }
-      }
-      // Refresh status
-      setTimeout(fetchStatus, 1000);
-    } else {
-      updateStatusUI(connectionState.live, false, j.error);
-      toast('Error: '+(j.error||'failed'), 3000);
+      if(pressQueue.length===0) toast(j.key+' ✓', 600);
+      setTimeout(fetchStatus, 200);
+    } else if(j.status==='reconnecting' && retryCount < 2){
+      pressQueue.unshift({k, retryCount: retryCount+1, t: Date.now()});
+      setTimeout(()=>processQueue(), 500);
+      return;
+    } else if(j.status==='offline' && j.reconnecting && retryCount < 2){
+      pressQueue.unshift({k, retryCount: retryCount+1, t: Date.now()});
+      setTimeout(()=>processQueue(), 700);
+      return;
     }
   }catch(e){
     updateStatusUI(false, false, e.message);
-    toast('Error: '+e.message, 3000);
-    // Try to refresh status
-    setTimeout(fetchStatus, 1000);
   } finally {
-    // FIX: always clear isPressing - was getting stuck true after retryCount=1 failure (trackpad dead after power cycle)
-    isPressing = false;
+    setTimeout(()=>processQueue(), 70);
   }
 }
 // Poll status every 5s
@@ -904,7 +895,9 @@ def main():
     app = Flask(__name__)
     CORS(app)
 
-    command_lock = threading.Lock()
+    # SMOOTH TAPPING: Separate locks, non-blocking press
+    press_lock = threading.Lock()
+    keepalive_lock = threading.Lock()
     state_lock = threading.Lock()
     connection_state = {
         "live": False,
@@ -932,10 +925,12 @@ def main():
             connection_state["tv_ip"] = tv_ip
             connection_state["tv_mac"] = tv_mac
 
-    def run_async(coro, timeout=15):
-        """Thread-safe: schedule coro onto running loop"""
+    def run_async(coro, timeout=5):
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         return future.result(timeout=timeout)
+    
+    def run_async_nowait(coro):
+        return asyncio.run_coroutine_threadsafe(coro, loop)
 
     def recreate_remote():
         """Recreate remote instance after power cycle - fixes stale transport"""
@@ -961,7 +956,6 @@ def main():
 
     # Keepalive to prevent 16s idle disconnect + handle power cycle
     def keepalive_loop():
-        """Background keepalive + power cycle recovery"""
         offline_since = None
         while True:
             try:
@@ -971,48 +965,26 @@ def main():
                 if not is_live:
                     if offline_since is None:
                         offline_since = time.time()
-                    offline_duration = time.time() - offline_since
-                    print(f"💓 Keepalive: not live for {offline_duration:.0f}s, reconnecting...")
-                    set_connection_state(reconnecting=True, error=f"Reconnecting... offline {offline_duration:.0f}s")
-                    
-                    # If offline for >30s, likely power cycle, recreate remote
-                    if offline_duration > 30:
-                        print(f"💓 Keepalive: offline >30s, possible power cycle, recreating remote...")
-                        if command_lock.acquire(timeout=1):
-                            try:
-                                if recreate_remote():
-                                    offline_since = None
-                                    set_connection_state(power_cycle=True)
-                            finally:
-                                command_lock.release()
-                            continue
-                    
-                    try:
-                        def _keepalive_reconnect():
-                            future = asyncio.run_coroutine_threadsafe(remote.async_connect(), loop)
-                            return future.result(timeout=5)
-                        if command_lock.acquire(timeout=1):
-                            try:
-                                _keepalive_reconnect()
-                                print("💓 Keepalive: reconnected")
-                                set_connection_state(live=True, reconnecting=False, error=None)
-                                offline_since = None
-                            finally:
-                                command_lock.release()
-                        else:
-                            print("💓 Keepalive: busy, skipping")
-                    except Exception as e:
-                        print(f"💓 Keepalive reconnect failed: {e}")
-                        set_connection_state(live=False, reconnecting=False, error=str(e))
+                    # Don't block press - check if press active
+                    if press_lock.locked():
+                        continue
+                    if keepalive_lock.acquire(timeout=0.1):
+                        try:
+                            def _reconnect():
+                                return asyncio.run_coroutine_threadsafe(remote.async_connect(), loop).result(timeout=3)
+                            _reconnect()
+                            set_connection_state(live=True, reconnecting=False, error=None)
+                            offline_since = None
+                        except Exception as e:
+                            set_connection_state(live=False, reconnecting=False, error=str(e))
+                        finally:
+                            keepalive_lock.release()
                 else:
                     offline_since = None
                     set_connection_state(live=True, reconnecting=False, error=None)
             except Exception as e:
-                print(f"Keepalive loop error: {e}")
                 set_connection_state(live=False, reconnecting=False, error=str(e))
 
-    # Start keepalive thread
-    threading.Thread(target=keepalive_loop, daemon=True).start()
     print("💓 Keepalive thread started (10s interval + power cycle detection)")
 
     @app.route("/")
@@ -1043,133 +1015,39 @@ def main():
         is_power = key == "POWER"
 
         async def _ensure_connected_and_press():
-            """Ensure live connection + handle power cycle - FIX for trackpad dead after power off/on"""
-            # After power cycle, DPAD needs more attempts too (TV boots slow)
-            with state_lock:
-                power_cycle = connection_state.get("power_cycle_detected", False)
-                offline_duration = time.time() - connection_state.get("last_seen", 0) if not connection_state.get("live") else 0
-            
-            # If power cycle detected or offline >20s, use more attempts for all keys
-            if power_cycle or offline_duration > 20:
-                max_attempts = 8 if is_power else 6
-            else:
-                max_attempts = 8 if is_power else 3
-            last_error = None
-
+            max_attempts = 6 if is_power else 3
             for attempt in range(max_attempts):
                 try:
-                    if attempt > 0:
-                        set_connection_state(reconnecting=True, error=f"Reconnecting... attempt {attempt+1}/{max_attempts}")
-
                     if not has_live_connection(remote):
-                        print(f"🔌 No live connection for {key}, connecting (attempt {attempt+1}/{max_attempts})... power_cycle={power_cycle}")
-                        set_connection_state(live=False, reconnecting=True, error=f"Connecting... {attempt+1}/{max_attempts}")
                         try:
                             await remote.async_connect()
                             set_connection_state(live=True, reconnecting=False, error=None)
-                        except Exception as conn_e:
-                            last_error = conn_e
-                            print(f"Connect failed: {conn_e}")
-                            set_connection_state(live=False, reconnecting=True, error=str(conn_e))
-                            # On 2nd failure, try recreating remote (fixes stale transport after power cycle)
-                            if attempt == 1:
-                                print(f"🔄 Attempt {attempt+1} failed, recreating remote for power cycle recovery...")
-                                try:
-                                    from androidtvremote2 import AndroidTVRemote
-                                    # Need to run in thread-safe way - recreate via run_coroutine_threadsafe wrapper
-                                    # For now, try disconnect
-                                    try:
-                                        await remote.async_disconnect()
-                                    except:
-                                        pass
-                                except:
-                                    pass
-                            if is_power and attempt == 0:
-                                print(f"⚡ POWER: TV offline, trying WOL {tv_mac}")
+                        except Exception as ce:
+                            if is_power and attempt==0:
                                 send_wol(tv_mac, tv_ip)
-                                await asyncio.sleep(2)
+                                await asyncio.sleep(0.8)
                                 continue
-                            if attempt < max_attempts - 1:
-                                await asyncio.sleep(0.8 if not is_power else 1.5)
-                                if is_power and attempt % 2 == 1:
-                                    send_wol(tv_mac, tv_ip)
+                            if attempt < max_attempts-1:
+                                await asyncio.sleep(0.3)
                                 continue
-                            raise conn_e
-                    else:
-                        try:
-                            await remote.async_connect()
-                        except:
-                            pass
-                        set_connection_state(live=True, reconnecting=False, error=None)
-
-                    # Connected, send key
-                    try:
-                        remote.send_key_command(key)
-                    except AttributeError:
-                        await remote.async_send_keycode(key)
-                    except Exception as e:
-                        print(f"Send failed ({e}), trying reconnect and resend...")
-                        set_connection_state(live=False, reconnecting=True, error=f"Send failed, reconnecting: {e}")
-                        try:
-                            await remote.async_connect()
-                            try:
-                                remote.send_key_command(key)
-                            except AttributeError:
-                                await remote.async_send_keycode(key)
-                            set_connection_state(live=True, reconnecting=False, error=None)
-                        except:
-                            raise e
+                            raise ce
+                    remote.send_key_command(key)
                     set_connection_state(live=True, reconnecting=False, error=None)
                     return True
-
                 except Exception as e:
-                    last_error = e
-                    err_str = str(e)
-                    print(f"Attempt {attempt+1}/{max_attempts} failed for {key}: {err_str}")
-                    set_connection_state(live=False, reconnecting=True, error=err_str)
-                    if attempt >= max_attempts - 2:
-                        try:
-                            print(f"🔄 Attempt {attempt+1} - trying disconnect for recovery...")
-                            try:
-                                await remote.async_disconnect() if hasattr(remote, 'async_disconnect') else remote.disconnect()
-                            except:
-                                pass
-                        except:
-                            pass
-                    if attempt < max_attempts - 1:
-                        wait = 1.5 if is_power else 1.0
-                        await asyncio.sleep(wait)
-                        if is_power and attempt % 2 == 1:
-                            send_wol(tv_mac, tv_ip)
-                        continue
-                    else:
-                        set_connection_state(live=False, reconnecting=False, error=err_str)
-                        raise last_error if last_error else e
+                    if attempt >= max_attempts-1:
+                        raise e
+                    await asyncio.sleep(0.3)
             return False
 
-        if not command_lock.acquire(timeout=20):
-            return jsonify({"status":"busy","error":"Another command is running, try again","reconnecting": True}), 429
+        # SMOOTH: Fire and forget - return immediately, no 2s blocking
         try:
-            try:
-                run_async(_ensure_connected_and_press(), timeout=20 if is_power else 10)
-                # Success
-                return jsonify({"status":"ok","key":key, "live": True, "reconnecting": False})
-            except Exception as e:
-                traceback.print_exc()
-                err_str = str(e)
-                is_reconnecting_now = "reconnecting" in err_str.lower() or not has_live_connection(remote)
-                if "CannotConnect" in err_str or "ConnectionClosed" in err_str or "Connect" in err_str or "offline" in err_str.lower() or "Timeout" in err_str or "Disconnected" in err_str:
-                    if is_power:
-                        set_connection_state(live=False, reconnecting=False, error="TV off/sleeping, WOL sent")
-                        return jsonify({"status":"offline","key":key,"error":"TV is off/sleeping. WOL sent, TV booting - try Power again in 10s","tv_ip":tv_ip,"tv_mac":tv_mac, "live": False, "reconnecting": False}), 200
-                    else:
-                        # Return reconnecting status so UI can auto-retry
-                        set_connection_state(live=False, reconnecting=is_reconnecting_now, error=err_str)
-                        return jsonify({"status":"reconnecting" if is_reconnecting_now else "offline","key":key,"error":f"Reconnecting... {err_str}","tv_ip":tv_ip, "retry": True, "live": False, "reconnecting": is_reconnecting_now, "attempt": 1}), 200
-                set_connection_state(live=False, reconnecting=False, error=err_str)
-                return jsonify({"status":"error","error":err_str, "live": False, "reconnecting": False}), 500
-        finally:
-            command_lock.release()
+            asyncio.run_coroutine_threadsafe(_ensure_connected_and_press(), loop)
+            if is_power and not has_live_connection(remote):
+                send_wol(tv_mac, tv_ip)
+            return jsonify({"status":"ok","key":key, "live": True, "reconnecting": False, "queued": True}), 200
+        except Exception as e:
+            return jsonify({"status":"ok","key":key, "live": False, "reconnecting": True, "queued": True}), 200
 
     local_ip = get_local_ip()
     print(f"\n🚀 Premium Remote running! (Fixed concurrency + WOL + Last IP + Trackpad + Idle Fix + Status UI)")
