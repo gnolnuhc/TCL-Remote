@@ -1,10 +1,10 @@
-# Google TV & Android TV - Free iPhone Remote (PWA)
+# Google TV & Android TV - Free Phone Remote (PWA)
 
-> A self-owned, 100% free, no-cloud, no-subscription iPhone remote for **any Google TV and Android TV**. Runs on your Mac, Pi, or NAS — open on iPhone as a native-feeling PWA. Originally built for TCL, now generic.
+> A self-owned, 100% free, no-cloud, no-subscription phone remote for **any Google TV and Android TV**. Runs on your Mac, Pi, or NAS — open on any phone, tablet, or laptop as a native-feeling PWA. Originally built for TCL, now generic for all Google TV & Android TV.
 
 No more hunting for the physical remote. No manufacturer account. No ads. No cloud.
 
-![PWA](https://img.shields.io/badge/PWA-iPhone%20Ready-black) ![Python](https://img.shields.io/badge/Python-3.9%2B-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![No Cloud](https://img.shields.io/badge/Cloud-None-red) ![Compatible](https://img.shields.io/badge/Compatible-Google%20TV%20%26%20Android%20TV-blue)
+![PWA](https://img.shields.io/badge/PWA-Phone%20Ready-black) ![Platform](https://img.shields.io/badge/Platform-iPhone%20%26%20Android%20%26%20Desktop-black) ![Python](https://img.shields.io/badge/Python-3.9%2B-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![No Cloud](https://img.shields.io/badge/Cloud-None-red) ![Compatible](https://img.shields.io/badge/Compatible-Google%20TV%20%26%20Android%20TV-blue)
 
 ---
 
@@ -16,8 +16,8 @@ Official manufacturer apps (TCL, Sony, Hisense) and Google TV app are bloated, r
 
 - **Free forever** — you own the code and certs
 - **Local only** — talks directly to TV over TLS on your LAN (port 6466/6467)
-- **PWA** — Add to Home Screen on iPhone, feels like a native app, works offline
-- **Fixes real pain points** — auto-discovery, last IP cache, Wake-on-LAN, 16s idle disconnect fix, power-cycle recovery, iOS audio unlock
+- **PWA** — Add to Home Screen on any phone (iPhone & Android), feels like a native app, works offline
+- **Fixes real pain points** — auto-discovery, last IP cache, Wake-on-LAN, 16s idle disconnect fix, power-cycle recovery, mobile audio unlock (iOS & Android)
 - **Generic** — works on any device that speaks Android TV Remote v2, not just TCL
 
 ### Compatibility
@@ -55,7 +55,7 @@ If your TV shows a PIN when you run the script, it’s compatible.
 ### How it works
 
 ```
-iPhone (Safari PWA) --HTTP :8000--> Flask on Mac/Pi/NAS --TLS :6466--> Any Google TV / Android TV
+Phone / Tablet (PWA) --HTTP :8000--> Flask on Mac/Pi/NAS --TLS :6466--> Any Google TV / Android TV
                               |
                               +--> zeroconf discovery + ARP MAC + WOL
 ```
@@ -64,10 +64,10 @@ Protocol: `androidtvremote2` Python library, correct order `AndroidTVRemote(clie
 
 ### Requirements
 
-- Same WiFi for TV and server (Mac/Pi/NAS + iPhone)
+- Same WiFi for TV and server (Mac/Pi/NAS + phone/tablet)
 - Python 3.9+
 - Any Google TV or Android TV with **Network standby / Keep network on** enabled (brand-specific): Settings > Network & Internet > Keep network on / Network standby
-- iPhone iOS 16+ for PWA
+- Any modern phone/tablet: iPhone iOS 16+ (Safari) or Android 8+ (Chrome) for PWA
 
 ```bash
 pip install androidtvremote2 flask flask-cors zeroconf
@@ -90,8 +90,10 @@ python3 google_tv_remote.py
    - If new, TV shows 6-digit PIN → enter in terminal
    - `cert.pem` + `key.pem` saved in same folder
 
-4. Open on iPhone: Safari → `http://<YOUR_SERVER_IP>:8000` (printed in terminal)
-   - Share → **Add to Home Screen** → name it "Google TV Remote" → now native app
+4. Open on phone:
+   - **iPhone:** Safari → `http://<YOUR_SERVER_IP>:8000` → Share → **Add to Home Screen** → "TV Remote"
+   - **Android:** Chrome → `http://<YOUR_SERVER_IP>:8000` → Menu ⋮ → **Add to Home screen** / **Install app** → "TV Remote"
+   - **Any laptop/tablet:** Just open the URL in browser
 
 That's it. Works forever, cert stays paired. Move `cert.pem`/`key.pem` to Pi/NAS if you change server.
 
@@ -99,7 +101,7 @@ That's it. Works forever, cert stays paired. Move `cert.pem`/`key.pem` to Pi/NAS
 
 Laptops sleep and break WOL/keepalive. Best: always-on device.
 
-**Raspberry Pi Zero 2 W (recommended, $15, always on):**
+**Raspberry Pi Zero 2 W (recommended, $15, always on, no laptop needed):**
 ```bash
 # On Pi
 sudo apt install python3-pip
@@ -142,7 +144,7 @@ caffeinate -dimsu python3 google_tv_remote.py
 ### UI Guide
 
 - **Power** ⏻ — sends WOL if supported/offline, retries 8×, toast "Waking TV..."
-- **Trackpad** — swipe = direction (plays sound mid-swipe), tap = OK
+- **Trackpad** — swipe = direction (plays sound mid-swipe), tap = OK — works on phone & desktop
 - **Volume row** — − / MUTE / + horizontal
 - **Status dot** — top left, polls `/status`
 - **Banner** — yellow when reconnecting, red when offline
@@ -152,11 +154,11 @@ caffeinate -dimsu python3 google_tv_remote.py
 **Trackpad does nothing after power off/on?**
 Fixed in latest version: JS `isPressing` flag no longer gets stuck true after retry, and server recreates remote after 30s offline. Update script.
 
-**No sound until Home tapped? (old iOS bug)**
-Fixed: global audio unlock listeners with capture phase + silent buffer + no `preventDefault` on `touchstart`/`touchend`. First tap/swipe now plays.
+**No sound until Home tapped? (old mobile bug)**
+Fixed: global audio unlock listeners with capture phase + silent buffer + no `preventDefault` on `touchstart`/`touchend`. First tap/swipe now plays on iPhone & Android.
 
-**First swipe no sound but tap does? (old iOS bug)**
-Fixed: sound now plays in `handleMove` when direction locks (>18px), not just `handleEnd`, and `playClick()` awaits `resume()`.
+**First swipe no sound but tap does? (old mobile bug)**
+Fixed: sound now plays in `handleMove` when direction locks (>18px), not just `handleEnd`, and `playClick()` awaits `resume()` for both iOS and Android.
 
 **Clicks stop after 1-2 presses (idle bug)?**
 AndroidTVRemote v2 has 16s idle watchdog with stale `is_on`. Fixed: `has_live_connection()` checks `transport.is_closing()`, keepalive every 10s, `command_lock` prevents race, auto-recreate remote on failure.
@@ -164,8 +166,8 @@ AndroidTVRemote v2 has 16s idle watchdog with stale `is_on`. Fixed: `has_live_co
 **TV offline after sleep?**
 Enable "Keep network on" / "Network standby" in TV settings. Ensure MAC was captured (script prints `📋 TV MAC`). If unknown, WOL disabled — expected for sticks like Chromecast.
 
-**iPhone can't connect?**
-Check same WiFi, firewall on server: allow Python. Use `http://`, not `https`.
+**Phone can't connect?**
+Check same WiFi, firewall on server: allow Python. Use `http://`, not `https`. Try `http://<SERVER_IP>:8000` on same WiFi.
 
 **Pairing fails with `{"error":"","status":"error"}` or `nodename nor servname`?**
 You used placeholder IP `192.168.1.XX`. Use real IP from TV: Settings > Network & Internet > WiFi > IP.
@@ -218,4 +220,4 @@ MIT — free for personal and commercial use. No warranty.
 
 ---
 
-Built with frustration for lost remotes and love for local-first software. Tested on TCL, works on any Google TV & Android TV. If this saved you $20 on a replacement remote, give it a ⭐.
+Built with frustration for lost remotes and love for local-first software. Tested on TCL, works on any Google TV & Android TV, from any phone (iPhone & Android). If this saved you $20 on a replacement remote, give it a ⭐.
